@@ -91,6 +91,29 @@
   .toggle button { background:var(--panel-2); border:1px solid var(--border); color:var(--text);
     padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
   .toggle button.active { background:var(--accent); color:white; border-color:var(--accent); font-weight:600; }
+  .city-chip {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:4px 11px; border-radius:999px;
+    background:#FFFFFF; border:1px solid var(--border);
+    color:var(--text); font-size:11.5px; cursor:pointer;
+    transition:all 0.15s; user-select:none;
+  }
+  .city-chip:hover { border-color:var(--accent); background:var(--accent-soft); }
+  .city-chip.selected { background:var(--accent); color:white; border-color:var(--accent); font-weight:600; }
+  .city-chip .code { opacity:0.6; font-size:10px; }
+  .city-chip.outlier::before { content:"⚠️ "; }
+  .city-chip.hidden { display:none; }
+  .city-team-tag {
+    display:inline-block; padding:1px 7px; border-radius:8px;
+    font-size:10px; font-weight:500;
+  }
+  table.city-summary { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:10px; }
+  table.city-summary th, table.city-summary td { padding:7px 10px; text-align:right; border-bottom:1px solid var(--border); }
+  table.city-summary th:first-child, table.city-summary td:first-child,
+  table.city-summary th:nth-child(2), table.city-summary td:nth-child(2) { text-align:left; }
+  table.city-summary th { color:var(--text-dim); font-weight:500; font-size:11px; background:var(--panel-2); }
+  table.city-summary td.up { color:var(--good); font-weight:600; }
+  table.city-summary td.down { color:var(--bad); font-weight:600; }
   footer { color:var(--text-dim); font-size:11px; margin-top:30px; text-align:center; }
 </style>
 </head>
@@ -167,6 +190,28 @@
     <h2>🌏 권역(팀) 단위 월별 점유율 추이 — 25년 12개월 + 26년 1~4월</h2>
     <div class="desc">권역별 월별 점유율 트렌드. 환승 의존 도시(<span id="excludedList">멜버른</span>) 자동 제외해서 정확함. 모든 권역에서 26년 점유율 하락 시작이 명확함.</div>
     <div class="chart-box tall"><canvas id="teamTrendChart"></canvas></div>
+  </div>
+
+  <!-- 🏙 도시별 추이 (도시 담당자용) -->
+  <div class="card col-12">
+    <h2>🏙 도시별 월별 시장 점유율 추이 — 도시 담당자용</h2>
+    <div class="desc">담당 도시를 클릭해 비교. 최대 8개까지 동시 표시. 권역 평균과 비교 가능. 환승 의존 도시(⚠️)도 검색 가능 (단 점유율 부정확).</div>
+
+    <div style="margin-bottom:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input type="text" id="cityTrendSearch" placeholder="🔍 도시명·IATA 검색..." class="search" style="width:280px; margin-bottom:0;"/>
+      <label style="display:inline-flex; gap:6px; align-items:center; font-size:13px; color:var(--text-dim);">
+        <input type="checkbox" id="showTeamAvg" /> 같은 권역 평균 함께 표시
+      </label>
+      <button id="clearCities" style="background:var(--panel-2); border:1px solid var(--border); padding:6px 12px; border-radius:6px; font-size:12px; cursor:pointer;">선택 모두 해제</button>
+      <span id="selectedCount" style="font-size:12px; color:var(--text-dim); margin-left:auto;">0 / 8 선택</span>
+    </div>
+
+    <div id="cityChips" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px; max-height:140px; overflow-y:auto; padding:8px; background:var(--panel-2); border-radius:6px;"></div>
+
+    <div class="chart-box tall"><canvas id="cityTrendChart"></canvas></div>
+
+    <!-- 선택 도시 요약 -->
+    <div id="cityTrendSummary" style="margin-top:14px;"></div>
   </div>
 
   <div class="card col-12">
@@ -474,6 +519,183 @@ new Chart(document.getElementById('teamTrendChart'), {
     }
   }
 });
+
+// ===== 🏙 도시별 월별 시장 점유율 추이 (도시 담당자용) =====
+const CITY_PALETTE = ['#51ABF3','#FA5B4A','#33B893','#F78000','#8238FA','#0D9488','#3A95DD','#EF4444'];
+const MAX_CITY_SELECT = 8;
+
+// 모든 도시 (환승 이상치 포함, 시각적 경고만)
+const ALL_CITIES_FOR_TREND = [...DATA.cities].sort((a,b)=>b.pax_25-a.pax_25);
+
+// 도시별 16개월 점유율 시계열 계산
+function cityMonthlyShare(c) {
+  const series = [];
+  for (let i=0; i<12; i++) {
+    series.push(c.months_25_pax[i]>0 ? c.months_25_tna[i]/c.months_25_pax[i]*100 : null);
+  }
+  for (let i=0; i<4; i++) {
+    series.push(c.months_26_pax[i]>0 ? c.months_26_tna[i]/c.months_26_pax[i]*100 : null);
+  }
+  return series;
+}
+
+// 초기 선택 도시 (Top 3 항공 출국자 + 환승 제외)
+let selectedCities = ALL_CITIES_FOR_TREND
+  .filter(c => !c.is_transit_outlier && c.pax_25 >= 100000)
+  .slice(0, 3)
+  .map(c => c.name);
+
+// 칩 렌더링
+function renderCityChips() {
+  const search = (document.getElementById('cityTrendSearch').value || '').toLowerCase();
+  const chips = ALL_CITIES_FOR_TREND.map(c => {
+    const sel = selectedCities.includes(c.name);
+    const matched = !search ||
+      c.name.toLowerCase().includes(search) ||
+      c.codes.join(',').toLowerCase().includes(search) ||
+      teamKR(c.team).toLowerCase().includes(search);
+    const cls = `city-chip${sel?' selected':''}${c.is_transit_outlier?' outlier':''}${matched?'':' hidden'}`;
+    return `<span class="${cls}" data-name="${c.name}">
+      ${c.name}<span class="code">${c.codes.join('·')}</span>
+    </span>`;
+  }).join('');
+  document.getElementById('cityChips').innerHTML = chips;
+  document.getElementById('selectedCount').textContent = `${selectedCities.length} / ${MAX_CITY_SELECT} 선택`;
+  document.querySelectorAll('#cityChips .city-chip').forEach(el => {
+    el.onclick = () => {
+      const name = el.dataset.name;
+      if (selectedCities.includes(name)) {
+        selectedCities = selectedCities.filter(n => n!==name);
+      } else {
+        if (selectedCities.length >= MAX_CITY_SELECT) {
+          alert(`최대 ${MAX_CITY_SELECT}개까지 선택 가능합니다.`);
+          return;
+        }
+        selectedCities.push(name);
+      }
+      renderCityChips();
+      renderCityTrend();
+    };
+  });
+}
+
+let cityTrendChart = null;
+function renderCityTrend() {
+  if (cityTrendChart) cityTrendChart.destroy();
+  const showTeamAvg = document.getElementById('showTeamAvg').checked;
+
+  // 선택 도시 데이터셋
+  const datasets = selectedCities.map((name, idx) => {
+    const c = DATA.cities.find(x => x.name === name);
+    if (!c) return null;
+    const color = CITY_PALETTE[idx % CITY_PALETTE.length];
+    return {
+      label: `${c.name} (${c.codes.join('·')})${c.is_transit_outlier?' ⚠️':''}`,
+      data: cityMonthlyShare(c),
+      borderColor: color, backgroundColor: color+'15',
+      tension: 0.3, borderWidth: 3, pointRadius: 4, pointHoverRadius: 7,
+      pointBackgroundColor: color, spanGaps: true
+    };
+  }).filter(Boolean);
+
+  // 권역 평균 (선택)
+  if (showTeamAvg) {
+    const selectedTeams = new Set(selectedCities.map(n => {
+      const c = DATA.cities.find(x => x.name === n);
+      return c ? c.team : null;
+    }).filter(Boolean));
+    selectedTeams.forEach(t => {
+      const trend = (DATA.team_trends || []).find(x => x.team === t);
+      if (!trend) return;
+      const color = TEAM_COLORS[t] || '#888';
+      datasets.push({
+        label: `[권역 평균] ${teamKR(t)}`,
+        data: [...trend.share_25_monthly, ...trend.share_26_monthly],
+        borderColor: color, backgroundColor: 'transparent',
+        tension: 0.3, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5,
+        borderDash: [6,4], spanGaps: true
+      });
+    });
+  }
+
+  cityTrendChart = new Chart(document.getElementById('cityTrendChart'), {
+    type:'line',
+    data: { labels: MONTHS_LABEL, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{
+          position:'bottom',
+          labels:{ font:{size:12.5, weight:'500'}, padding:10, usePointStyle:true, pointStyle:'circle' }
+        },
+        tooltip:{
+          backgroundColor:'rgba(33,37,41,0.95)', padding:12, titleFont:{size:13}, bodyFont:{size:12.5},
+          callbacks:{
+            title: items => items[0].label,
+            label: c => `  ${c.dataset.label}: ${c.parsed.y?c.parsed.y.toFixed(2):'-'}%`
+          }
+        }
+      },
+      scales:{
+        y:{
+          ticks:{ callback:v=>v+'%', font:{size:12} },
+          title:{display:true, text:'시장 점유율 (%)', font:{size:12, weight:'600'}},
+          grid:{color:'rgba(33,37,41,0.06)'}
+        },
+        x:{
+          ticks:{ maxRotation:45, minRotation:0, font:{size:11}, autoSkip:false },
+          grid:{display:false}
+        }
+      }
+    }
+  });
+
+  // 요약 테이블
+  renderCitySummary();
+}
+
+function renderCitySummary() {
+  if (selectedCities.length === 0) {
+    document.getElementById('cityTrendSummary').innerHTML = '<p style="color:var(--text-dim); font-size:13px;">선택한 도시가 없습니다. 위에서 도시를 클릭해 추가하세요.</p>';
+    return;
+  }
+  let html = '<table class="city-summary"><thead><tr>' +
+    '<th>도시</th><th>팀</th>' +
+    '<th>25년 항공</th><th>25년 T&A</th><th>25년 시장점유율</th>' +
+    '<th>26 1~4월 항공</th><th>26 1~4월 T&A</th><th>26 1~4월 시장점유율</th>' +
+    '<th>Δ (pp)</th>' +
+    '</tr></thead><tbody>';
+  selectedCities.forEach(name => {
+    const c = DATA.cities.find(x => x.name === name);
+    if (!c) return;
+    const dcls = c.share_delta>=0?'up':'down';
+    html += `<tr>
+      <td>${c.is_transit_outlier?'⚠️ ':''}${c.name} <span style="color:var(--text-dim);font-size:11px">${c.codes.join('·')}</span></td>
+      <td><span class="city-team-tag" style="background:${(TEAM_COLORS[c.team]||'#888')}22; color:${TEAM_COLORS[c.team]||'#666'}">${teamKR(c.team)}</span></td>
+      <td>${fmt(c.pax_25)}</td>
+      <td>${fmt(c.tna_25)}</td>
+      <td><b>${c.share_25.toFixed(2)}%</b></td>
+      <td>${fmt(c.pax_26_q14)}</td>
+      <td>${fmt(c.tna_26_q14)}</td>
+      <td><b>${c.share_26_q14.toFixed(2)}%</b></td>
+      <td class="${dcls}">${c.share_delta>=0?'+':''}${c.share_delta.toFixed(2)}pp</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('cityTrendSummary').innerHTML = html;
+}
+
+document.getElementById('cityTrendSearch').addEventListener('input', renderCityChips);
+document.getElementById('showTeamAvg').addEventListener('change', renderCityTrend);
+document.getElementById('clearCities').addEventListener('click', () => {
+  selectedCities = [];
+  renderCityChips();
+  renderCityTrend();
+});
+
+renderCityChips();
+renderCityTrend();
 
 // ===== 통합 테이블 — 환승 도시 완전 제외 + 월별 컬럼 + 한글 라벨 =====
 const MONTH_KEYS_25 = ['25-01','25-02','25-03','25-04','25-05','25-06','25-07','25-08','25-09','25-10','25-11','25-12'];
