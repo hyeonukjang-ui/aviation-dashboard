@@ -126,10 +126,14 @@ def metro_display_name(code, fallback):
 # 1) 데이터 추출
 # =============================================================================
 def extract_data():
-    """data/raw/{공항 연도} 폴더에서 모든 엑셀 읽어 dict 반환"""
-    folder_pattern = re.compile(r'^(김포|인천)\s*(\d{2})년$')
+    """
+    data/raw/{공항 연도} 폴더에서 전체 여객 엑셀 읽기.
+    data/raw/{공항 연도 환승} 폴더가 있으면 환승여객을 차감 (실제 목적지 출국자).
+    """
+    folder_pattern = re.compile(r'^(김포|인천)\s*(\d{2})년(\s*환승)?$')
     iata_master = {}
     iata_month = {}
+    transit_month = {}  # (year, month, code) -> {pax, gmp_pax, icn_pax}
 
     for folder in sorted(RAW_DIR.iterdir()):
         if not folder.is_dir(): continue
@@ -137,10 +141,18 @@ def extract_data():
         if not m:
             print(f"⏭️  스킵: {folder.name} (폴더명 패턴 불일치)")
             continue
-        airport_kr, year2 = m.groups()
+        airport_kr, year2, is_transit = m.groups()
+        is_transit = bool(is_transit)
         airport = "GMP" if airport_kr == "김포" else "ICN"
         year = 2000 + int(year2)
-        print(f"📁 {folder.name} → {airport} {year}")
+        label = "환승" if is_transit else "전체"
+        files = list(folder.iterdir())
+        if not files:
+            if is_transit:
+                continue  # 환승 폴더는 비어 있어도 무시 (옵션)
+            print(f"⚠️  {folder.name}: 파일 없음")
+            continue
+        print(f"📁 {folder.name} → {airport} {year} ({label})")
 
         for fname in sorted(folder.iterdir()):
             if not fname.suffix == '.xlsx': continue
@@ -166,20 +178,51 @@ def extract_data():
                 if code not in iata_master:
                     iata_master[code] = {"name": ko, "team": iata_to_team.get(code, "South-Eastern Asia")}
                 key = (year, month, code)
-                if key not in iata_month:
-                    iata_month[key] = {"pax":0,"flights":0,"cargo":0,"gmp_pax":0,"icn_pax":0,"gmp_flights":0,"icn_flights":0}
-                d = iata_month[key]
-                d["pax"] += to_int(row[4])
-                d["flights"] += to_int(row[3])
-                d["cargo"] += to_int(row[5])
-                if airport == "GMP":
-                    d["gmp_pax"] += to_int(row[4])
-                    d["gmp_flights"] += to_int(row[3])
+                pax = to_int(row[4])
+                flights = to_int(row[3])
+                cargo = to_int(row[5])
+                if is_transit:
+                    # 환승여객: 별도 누적 (나중에 차감)
+                    if key not in transit_month:
+                        transit_month[key] = {"pax":0,"gmp_pax":0,"icn_pax":0}
+                    transit_month[key]["pax"] += pax
+                    if airport == "GMP":
+                        transit_month[key]["gmp_pax"] += pax
+                    else:
+                        transit_month[key]["icn_pax"] += pax
                 else:
-                    d["icn_pax"] += to_int(row[4])
-                    d["icn_flights"] += to_int(row[3])
+                    # 전체 여객
+                    if key not in iata_month:
+                        iata_month[key] = {"pax":0,"flights":0,"cargo":0,"gmp_pax":0,"icn_pax":0,"gmp_flights":0,"icn_flights":0,"transit_pax":0}
+                    d = iata_month[key]
+                    d["pax"] += pax
+                    d["flights"] += flights
+                    d["cargo"] += cargo
+                    if airport == "GMP":
+                        d["gmp_pax"] += pax
+                        d["gmp_flights"] += flights
+                    else:
+                        d["icn_pax"] += pax
+                        d["icn_flights"] += flights
                 count += 1
             print(f"   ✅ {fname.name}: {month}월, {count}개 노선")
+
+    # 환승여객 차감
+    if transit_month:
+        adjusted = 0
+        for key, t in transit_month.items():
+            if key in iata_month:
+                iata_month[key]["transit_pax"] = t["pax"]
+                # 순여객 = 전체 - 환승
+                iata_month[key]["pax"] = max(0, iata_month[key]["pax"] - t["pax"])
+                iata_month[key]["gmp_pax"] = max(0, iata_month[key]["gmp_pax"] - t["gmp_pax"])
+                iata_month[key]["icn_pax"] = max(0, iata_month[key]["icn_pax"] - t["icn_pax"])
+                adjusted += 1
+        print(f"\n🔧 환승여객 차감 적용: {adjusted}개 (도시·월), 총 환승 차감 {sum(t['pax'] for t in transit_month.values()):,}명")
+    else:
+        print(f"\n⚠️  환승여객 데이터 없음 — 점유율 분모에 환승객 포함됨 (점유율 실제보다 낮게 나옴)")
+        print(f"   해결: data/raw/김포 25년 환승/, 인천 25년 환승/ 등에 항공포털 환승여객 다운로드 필요")
+
     return iata_master, iata_month
 
 # =============================================================================
