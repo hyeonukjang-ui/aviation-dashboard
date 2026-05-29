@@ -161,7 +161,11 @@
         <div class="body">
           <div class="title">시장 점유율 (Market Share)</div>
           <div class="desc-line">도쿄 가는 100명 중 <b>몇 명이 마이리얼트립에서 예약</b>했는가?</div>
-          <div class="example">예: 7명이 예약하면 → 시장 점유율 7%</div>
+          <div style="margin-top:6px; padding:8px 12px; background:#FFFFFF; border:1px solid #C8E2F8; border-radius:6px; font-size:12.5px; color:#1B4866; line-height:1.7;">
+            📐 <b>계산법</b>: 마이리얼트립 월간 예약자수 (TRAVEL_ID 기준 고유 주문수) ÷ 항공 출국자수 (명) × 100<br>
+            <span style="color:#3A6B8C;">※ TRAVEL_ID 단위 → 1명이 4개 상품 예약해도 1로 계산. 동행자랑 같은 여행이면 1로 묶임. 취소 제외.</span>
+          </div>
+          <div class="example">예: 도쿄 항공 출국 100명 中 MRT 예약 7명 → <b>시장 점유율 7%</b></div>
         </div>
       </div>
       <div class="item">
@@ -169,7 +173,11 @@
         <div class="body">
           <div class="title">유입 점유율 (Awareness)</div>
           <div class="desc-line">도쿄 가는 100명 중 <b>몇 명이 우리 사이트에서 도쿄 상품을 구경</b>했는가? (구매 안 해도 OK)</div>
-          <div class="example">예: 30명이 도쿄 상품 PDP 봤으면 → 유입 점유율 30%</div>
+          <div style="margin-top:6px; padding:8px 12px; background:#FFFFFF; border:1px solid #C8E2F8; border-radius:6px; font-size:12.5px; color:#1B4866; line-height:1.7;">
+            📐 <b>계산법</b>: 마이리얼트립 도쿄 상품 PDP 본 사용자 수 (PID 기준 월간 고유) ÷ 항공 출국자수 (명) × 100<br>
+            <span style="color:#3A6B8C;">※ PID 단위 → 한 사람이 도쿄 PDP를 100번 봐도 월 1로 카운트. 회원·비회원 디바이스 통합 식별.</span>
+          </div>
+          <div class="example">예: 도쿄 항공 출국 100명 中 도쿄 PDP 본 사람 30명 → <b>유입 점유율 30%</b></div>
         </div>
       </div>
       <div class="item">
@@ -177,14 +185,18 @@
         <div class="body">
           <div class="title">전환율 (CVR)</div>
           <div class="desc-line">상품 본 사람 중 <b>몇 명이 실제로 결제</b>까지 갔는가?</div>
-          <div class="example">예: 30명 보고 3명 결제 → 전환율 10%</div>
+          <div style="margin-top:6px; padding:8px 12px; background:#FFFFFF; border:1px solid #C8E2F8; border-radius:6px; font-size:12.5px; color:#1B4866; line-height:1.7;">
+            📐 <b>계산법</b>: 결제 완료 사용자 수 (PID 고유) ÷ PDP 본 사용자 수 (PID 고유) × 100<br>
+            <span style="color:#3A6B8C;">※ 항공 데이터 무관 — 우리 사이트 내부 효율 지표. PDP → 결제까지의 funnel.</span>
+          </div>
+          <div class="example">예: 도쿄 PDP 본 30명 中 결제 3명 → <b>전환율 10%</b></div>
         </div>
       </div>
-      <div style="margin-top:10px; padding:8px 12px; background:#FFF7D6; border-radius:6px; font-size:12.5px; color:#7A5A00;">
-        ✨ <b>3가지 동시 추적</b>으로 어디가 문제인지 진단:
-        유입 ↓ + 시장 ↓ → <b>인지도 위기</b> (마케팅 강화) ·
-        유입 → + 시장 ↓ → <b>전환 위기</b> (PDP·체크아웃 개선) ·
-        유입 ↑ + 시장 ↑ → 정상 성장
+      <div style="margin-top:10px; padding:10px 14px; background:#FFF7D6; border-radius:6px; font-size:12.5px; color:#7A5A00; line-height:1.75;">
+        ✨ <b>3가지 동시 추적</b>으로 어디가 문제인지 진단:<br>
+        · 유입 ↓ + 시장 ↓ → <b>인지도 위기</b> (마케팅·SEO·앱 활성화 강화)<br>
+        · 유입 → + 시장 ↓ → <b>전환 위기</b> (PDP 개선·체크아웃 UX·가격)<br>
+        · 유입 ↑ + 시장 ↑ → 정상 성장
       </div>
     </div>
 
